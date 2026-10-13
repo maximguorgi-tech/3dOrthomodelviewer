@@ -1,0 +1,28 @@
+{
+  "name": "Dental Scan Viewer",
+  "short_name": "Scan Viewer",
+  "description": "View and measure STL, PLY and OBJ dental scans.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#e9ecea",
+  "theme_color": "#2f62b0",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "model/stl": [".stl"],
+        "application/octet-stream": [".stl", ".ply", ".obj"],
+        "model/obj": [".obj"],
+        "text/plain": [".obj", ".ply"]
+      }
+    }
+  ]
+}

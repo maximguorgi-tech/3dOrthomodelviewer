@@ -1,0 +1,75 @@
+DENTAL SCAN VIEWER - HOW TO INSTALL
+====================================
+
+This folder is a complete app. It installs with its own icon on tablets,
+phones and laptops (Windows, Mac, Android, iPad).
+
+STEP 1 - Put the folder online (one time, free, about 2 minutes)
+----------------------------------------------------------------
+Apps like this must be opened from a secure web address (https) once,
+so the device can install them.
+
+Easiest way: Netlify Drop
+  1. On your laptop, unzip this file.
+  2. Go to https://app.netlify.com/drop
+  3. Drag the whole "dental-scan-viewer" folder onto the page.
+  4. You get a web address like https://something.netlify.app
+     (Sign up for a free account if asked, so the address stays permanent.)
+
+Alternative: GitHub Pages (upload the folder to a repository and turn on
+Pages in its settings).
+
+Your scans are NEVER uploaded anywhere. Files you open stay on your device.
+
+STEP 2 - Install the app on each device
+---------------------------------------
+Open your web address on the device, then:
+
+  Windows / Mac laptop (Chrome or Edge)
+    Click "Install app" in the app's toolbar, or the install icon at the
+    right end of the address bar. The app gets its own window, a desktop
+    / Start-menu icon, and can be pinned to the taskbar.
+    After installing, you can right-click an .stl file >
+    Open with > Dental Scan Viewer.
+
+  Android tablet (Chrome)
+    Tap "Install app" in the toolbar, or menu (three dots) > Install app.
+
+  iPad / iPhone (Safari)
+    Tap the Share button > Add to Home Screen.
+
+STEP 3 - Use it offline
+-----------------------
+Open the installed app once while connected to the internet. After that
+it works without internet.
+
+OPENING A CASE IN OCCLUSION
+---------------------------
+Tap "Open scans" and select the upper AND lower files together
+(hold Ctrl or Shift on a laptop to pick both). Export both jaws from your
+scanner software in the same position (the "bite" / "occlusion" export),
+so they line up the way they were scanned.
+Files named with "upper"/"lower", "maxilla"/"mandible" are labelled
+automatically; otherwise set Upper or Lower in the Models panel.
+
+Colour scans exported as OBJ come with an .mtl file and a texture
+photo (.jpg or .png). Select all of them together so the colour shows.
+
+The Display button sets resolution, brightness, contrast and surface.
+These adjust automatically for each scan you open; tap "Auto for this
+scan" to return to the automatic settings.
+
+If you are updating from the first version: replace the files online
+with these. Installed apps update the next time they are opened twice.
+
+QUICK USE WITHOUT INSTALLING (laptop only)
+------------------------------------------
+Double-click index.html to open it in your browser. This needs an
+internet connection and does not create an app icon.
+
+FILES
+-----
+index.html             the app
+manifest.webmanifest   app name, icon and file types
+sw.js                  makes the app work offline
+icons/                 app icons

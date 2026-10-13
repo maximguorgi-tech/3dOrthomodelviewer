@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Dental Scan Viewer</title>
+<meta name="theme-color" content="#2f62b0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Scan Viewer">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one-screen app. Toolbar on top, 3D stage fills the rest; model panel floats top-left, view bar bottom-centre. */
+:root{
+  --bg:#e9ecea; --panel:#fbfcfb; --line:#d3d9d6; --fg:#1b2220; --muted:#5d6a66;
+  --accent:#2f62b0; --accent-ink:#ffffff; --accent-soft:#dfe8f6;
+  --stage-hi:#f7f8f7; --stage-lo:#d9dfdc; --measure:#d2552c;
+  --sans:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --shadow:0 6px 24px rgba(20,30,28,.12);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#101413; --panel:#181e1d; --line:#2b3432; --fg:#e4eae8; --muted:#94a29d;
+  --accent:#7aa3e2; --accent-ink:#0d1420; --accent-soft:#1e2a3d;
+  --stage-hi:#222a29; --stage-lo:#0c100f; --measure:#f08a62;
+  --shadow:0 6px 24px rgba(0,0,0,.45); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101413; --panel:#181e1d; --line:#2b3432; --fg:#e4eae8; --muted:#94a29d;
+  --accent:#7aa3e2; --accent-ink:#0d1420; --accent-soft:#1e2a3d;
+  --stage-hi:#222a29; --stage-lo:#0c100f; --measure:#f08a62;
+  --shadow:0 6px 24px rgba(0,0,0,.45); color-scheme:dark}
+
+html,body{height:100%;margin:0}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box;height:100%}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;display:flex;flex-direction:column;overflow:hidden}
+.bar{display:flex;align-items:center;gap:10px 12px;padding-block:10px;padding-inline:16px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.brand{display:flex;flex-direction:column;min-width:0;flex:1 1 170px}
+.brand b{font-weight:700;font-size:15px;letter-spacing:-.01em}
+.brand span{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+button,.btn,select{font:inherit;font-weight:500;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer;touch-action:manipulation}
+button:hover,.btn:hover,select:hover{border-color:var(--muted)}
+button:focus-visible,.btn:focus-within,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.primary:hover{border-color:var(--accent);filter:brightness(1.06)}
+.btn input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+svg.i{width:17px;height:17px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px;background:var(--panel)}
+.seg button{border:0;height:30px;padding:0 10px;border-radius:6px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+
+.stage{position:relative;flex:1;min-height:0;background:radial-gradient(ellipse at 50% 35%,var(--stage-hi),var(--stage-lo) 75%);touch-action:none}
+.stage canvas{display:block;width:100%;height:100%}
+.card{position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);font-size:13px}
+
+/* model panel */
+.panel{left:16px;top:16px;width:300px;max-width:calc(100% - 32px);max-height:calc(100% - 92px);overflow:auto;touch-action:pan-y}
+.panel summary{list-style:none;cursor:pointer;padding:10px 14px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.panel summary::-webkit-details-marker{display:none}
+.panel summary small{color:var(--muted);font-weight:500;font-family:var(--mono);font-size:12px}
+.panel summary::after{content:"";width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);margin-top:-4px;transition:transform .15s}
+.panel:not([open]) summary::after{transform:rotate(-45deg);margin-top:0}
+.pbody{display:flex;flex-direction:column;gap:12px;padding:0 14px 14px}
+.models{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.model{display:grid;grid-template-columns:auto 1fr auto;gap:6px 8px;align-items:center;padding:8px;border:1px solid var(--line);border-radius:8px}
+.model.off{opacity:.55}
+.model .nm{min-width:0}
+.model .nm b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.model .nm small{color:var(--muted);font-family:var(--mono);font-size:11px}
+.model .ctl{grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.model select{height:30px;padding:0 6px;font-size:12px;border-radius:6px}
+.model input[type=range]{flex:1;min-width:70px}
+.icon-btn{width:32px;height:32px;padding:0;justify-content:center}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;border:1px solid var(--line)}
+.field{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center}
+.field label,.sub{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.field output{font-family:var(--mono);font-variant-numeric:tabular-nums;min-width:48px;text-align:right}
+input[type=range]{accent-color:var(--accent)}
+.orient{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.orient button{height:30px;padding:0 9px;font-size:12px}
+.legend{display:flex;flex-direction:column;gap:6px}
+.legend ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.legend li{display:flex;align-items:center;gap:6px}
+.legend i{width:14px;height:10px;border-radius:2px;flex:none}
+.empty{color:var(--muted);margin:0}
+
+.views{left:50%;bottom:16px;transform:translateX(-50%);display:flex;padding:4px;gap:2px;max-width:calc(100% - 32px);overflow-x:auto}
+.views button{border:0;height:32px;padding:0 10px;font-size:13px;background:transparent;white-space:nowrap}
+.views button:hover{background:var(--accent-soft)}
+.views .sep{width:1px;background:var(--line);margin:4px 2px;flex:none}
+.rightcol{position:absolute;right:16px;top:16px;display:flex;flex-direction:column;gap:10px;width:272px;max-width:calc(100% - 32px);max-height:calc(100% - 92px);overflow:auto;touch-action:pan-y}
+.rightcol .card{position:static}
+.measures{padding:10px 12px}
+.dpanel{padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+.dpanel h3{margin:0;font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.dpanel h3 button{height:28px;padding:0 9px;font-size:12px}
+.dgroup{display:flex;flex-direction:column;gap:6px}
+.dgroup .seg{display:flex}
+.dgroup .seg button{flex:1;justify-content:center;height:28px;padding:0 4px;font-size:12px}
+.mono{font-family:var(--mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.dpanel .field{grid-template-columns:78px 1fr 40px}
+.note{margin:0;font-size:12px;color:var(--muted);line-height:1.4;border-top:1px solid var(--line);padding-top:10px}
+.measures h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.measures h3 button{height:24px;padding:0 8px;font-size:12px}
+.measures ol{margin:0;padding-left:20px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.measures p{margin:0;color:var(--muted);max-width:22ch}
+.hint{position:absolute;right:16px;bottom:72px;color:var(--muted);font-size:12px;text-align:right;line-height:1.5;pointer-events:none}
+.tag{position:absolute;transform:translate(-50%,-130%);background:var(--measure);color:#fff;font-family:var(--mono);font-size:12px;padding:2px 7px;border-radius:5px;pointer-events:none;white-space:nowrap}
+.drop{position:absolute;inset:12px;border:2px dashed var(--accent);border-radius:14px;background:color-mix(in srgb,var(--accent-soft) 85%,transparent);display:grid;place-items:center;font-size:17px;font-weight:600;text-align:center;padding:16px}
+.toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);padding:8px 14px;max-width:calc(100% - 32px);z-index:5}
+@media (max-width:720px){
+  .lbl{display:none}
+  button,.btn{padding:0 10px}
+  .hint{display:none}
+  .panel{left:12px;top:12px;width:280px}
+  .rightcol{right:12px;top:auto;bottom:68px;width:min(272px,calc(100% - 24px));max-height:calc(100% - 140px)}
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><b>Dental Scan Viewer</b><span id="fname">Loading…</span></div>
+  <div class="tools">
+    <label class="btn primary" title="Open upper and lower scans (STL, PLY or OBJ). Select both files together.">
+      <svg class="i" viewBox="0 0 24 24"><path d="M4 17v3h16v-3M12 4v12M7 9l5-5 5 5"/></svg>
+      <span class="lbl">Open scans</span>
+      <input id="file" type="file" accept=".stl,.ply,.obj,.mtl,.jpg,.jpeg,.png" multiple>
+    </label>
+    <div class="seg" role="group" aria-label="Jaws shown">
+      <button data-j="upper" aria-pressed="false">Upper</button>
+      <button data-j="both" aria-pressed="true">Both</button>
+      <button data-j="lower" aria-pressed="false">Lower</button>
+    </div>
+    <button id="contacts" aria-pressed="false" title="Colour the teeth by distance to the opposing arch">
+      <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg><span class="lbl">Contacts</span></button>
+    <button id="measure" aria-pressed="false" title="Tap two points to measure">
+      <svg class="i" viewBox="0 0 24 24"><path d="M3 17 17 3l4 4L7 21z M7 13l2 2M10 10l2 2M13 7l2 2"/></svg><span class="lbl">Measure</span></button>
+    <button id="wire" aria-pressed="false" title="Show mesh triangles">
+      <svg class="i" viewBox="0 0 24 24"><path d="M12 3 3 8v8l9 5 9-5V8z M3 8l18 8M21 8 3 16M12 3v18"/></svg><span class="lbl">Mesh</span></button>
+    <button id="display" aria-pressed="false" aria-controls="dpanel" title="Resolution, brightness and surface">
+      <svg class="i" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span class="lbl">Display</span></button>
+    <button id="install" hidden title="Install this app">
+      <svg class="i" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg><span class="lbl">Install app</span></button>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <details class="card panel" id="panel" open>
+    <summary>Models <small id="mcount"></small></summary>
+    <div class="pbody">
+      <ul class="models" id="models"></ul>
+      <div class="field">
+        <label for="open">Open bite</label>
+        <input id="open" type="range" min="0" max="20" step="0.5" value="0">
+        <output id="openv" for="open">0.0 mm</output>
+      </div>
+      <div class="orient">
+        <span class="sub">Orientation</span>
+        <button id="tilt" title="Rotate 90° forward">Tilt 90°</button>
+        <button id="spin" title="Rotate 90° around the vertical axis">Turn 90°</button>
+        <button id="flip" title="Turn upside down">Flip</button>
+      </div>
+      <div class="legend" id="legend" hidden>
+        <span class="sub">Distance to opposing arch</span>
+        <ul>
+          <li><i style="background:#d7263d"></i>overlap</li>
+          <li><i style="background:#f08a24"></i>0–0.1 mm</li>
+          <li><i style="background:#efd03a"></i>0.1–0.25</li>
+          <li><i style="background:#45a85a"></i>0.25–0.5</li>
+          <li><i style="background:#3b7dd8"></i>0.5–1.0</li>
+          <li><i style="background:var(--line)"></i>over 1 mm</li>
+        </ul>
+      </div>
+    </div>
+  </details>
+  <div class="rightcol">
+    <section class="card dpanel" id="dpanel" hidden aria-label="Display settings">
+      <h3>Display <button id="dauto" title="Set everything to suit the open scans">Auto for this scan</button></h3>
+      <div class="dgroup">
+        <span class="sub">Resolution</span>
+        <div class="seg" id="res" role="group" aria-label="Resolution">
+          <button data-r="auto">Auto</button><button data-r="low">Low</button><button data-r="standard">Std</button><button data-r="high">High</button><button data-r="ultra">Ultra</button>
+        </div>
+        <span class="mono" id="resinfo"></span>
+      </div>
+      <div class="field"><label for="bright">Brightness</label><input id="bright" type="range" min="0.35" max="1.8" step="0.05"><output id="brightv" for="bright"></output></div>
+      <div class="field"><label for="contrast">Contrast</label><input id="contrast" type="range" min="0" max="1" step="0.05"><output id="contrastv" for="contrast"></output></div>
+      <div class="dgroup">
+        <span class="sub">Surface</span>
+        <div class="seg" id="surface" role="group" aria-label="Surface"><button data-s="matte">Matte</button><button data-s="satin">Satin</button><button data-s="gloss">Gloss</button></div>
+      </div>
+      <div class="dgroup">
+        <span class="sub">Shading</span>
+        <div class="seg" id="shading" role="group" aria-label="Shading"><button data-h="smooth">Smooth</button><button data-h="flat">Flat facets</button></div>
+      </div>
+      <p class="note" id="dnote"></p>
+    </section>
+    <div class="card measures" id="measures" hidden>
+      <h3>Distances <button id="clear">Clear</button></h3>
+      <ol id="mlist"></ol>
+      <p id="mhelp">Tap two points on the model.</p>
+    </div>
+  </div>
+  <div class="hint">Drag to rotate · Right-drag or two fingers to pan<br>Scroll or pinch to zoom · Drop files anywhere</div>
+  <nav class="card views" aria-label="Standard views">
+    <button data-v="front">Front</button><button data-v="right">Right</button><button data-v="left">Left</button><button data-v="back">Lingual</button>
+    <span class="sep"></span>
+    <button data-v="upperOcc">Upper occlusal</button><button data-v="lowerOcc">Lower occlusal</button>
+  </nav>
+  <div class="drop" id="drop" hidden>Drop upper and lower scans together<br>STL, PLY or OBJ (with its MTL and texture image)</div>
+  <div class="card toast" id="toast" hidden></div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/PLYLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const stage=$('stage');
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const Y=new THREE.Vector3(0,1,0);
+
+// ---------- renderer / scene ----------
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setClearColor(0x000000,0);
+renderer.outputEncoding=THREE.sRGBEncoding;          // colours shown as the scanner recorded them
+renderer.toneMapping=THREE.ACESFilmicToneMapping;    // keeps bright stone and enamel from washing out
+stage.prepend(renderer.domElement);
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(35,1,0.1,5000);
+scene.add(camera);
+const controls=new THREE.OrbitControls(camera,renderer.domElement);
+controls.enableDamping=true; controls.dampingFactor=0.12; controls.screenSpacePanning=true;
+const hemi=new THREE.HemisphereLight(0xffffff,0x5a5650,0.5); scene.add(hemi);
+const key=new THREE.DirectionalLight(0xffffff,1.1); key.position.set(-0.7,1.1,1.4); camera.add(key);
+const rim=new THREE.DirectionalLight(0xffffff,0.25); rim.position.set(1,-0.3,-0.6); camera.add(rim);
+const lin=c=>new THREE.Color(c).convertSRGBToLinear();
+
+// ---------- display: resolution, brightness, contrast, surface ----------
+const SURFACE={matte:0.85,satin:0.6,gloss:0.32};
+const display={res:'auto',exposure:0.8,contrast:0.5,surface:'satin',shading:'smooth'};
+const RES_LABEL={low:'Low',standard:'Standard',high:'High',ultra:'Ultra'};
+let autoRes='high', autoNote='';
+function pixelRatio(){
+  const dpr=window.devicePixelRatio||1, mode=display.res==='auto'?autoRes:display.res;
+  const pr={low:1,standard:Math.max(1,Math.min(dpr,1.5)),high:Math.min(Math.max(dpr,1.5),2.5),ultra:Math.min(Math.max(dpr*1.5,2),3)}[mode];
+  const px=Math.max(1,stage.clientWidth*stage.clientHeight);
+  return Math.min(pr,Math.sqrt(16e6/px)); // keeps the drawing size within what tablets can handle
+}
+function updateResInfo(){
+  const c=renderer.domElement, mode=display.res==='auto'?autoRes:display.res;
+  $('resinfo').textContent=c.width+' × '+c.height+' px · '+(display.res==='auto'?'auto: ':'')+RES_LABEL[mode];
+}
+function applyLights(){
+  const c=display.contrast;
+  renderer.toneMappingExposure=display.exposure;
+  hemi.intensity=0.18+0.62*(1-c);
+  key.intensity=0.55+1.25*c;
+  rim.intensity=0.12+0.3*(1-c);
+  $('bright').value=display.exposure; $('brightv').textContent=Math.round(display.exposure*100)+'%';
+  $('contrast').value=c; $('contrastv').textContent=Math.round(c*100)+'%';
+}
+function applyDisplay(){
+  applyLights();
+  models.forEach(applyAppearance);
+  resize();
+  const mark=(sel,attr,val)=>document.querySelectorAll(sel).forEach(b=>b.setAttribute('aria-pressed',b.dataset[attr]===val));
+  mark('#res button','r',display.res); mark('#surface button','s',display.surface); mark('#shading button','h',display.shading);
+  $('dnote').textContent=autoNote; $('dnote').hidden=!autoNote;
+}
+function avgLum(m){
+  if(m.color!=='scan'||!m.hasScanColor){ const c=lin(m.color==='scan'?DEFAULT_COLOR[m.jaw]:m.color); return 0.2126*c.r+0.7152*c.g+0.0722*c.b; }
+  if(m.texture) return 0.3;
+  let s=0,n=0;
+  for(const mesh of m.meshes){ const c=mesh.userData.scanColor; if(!c) continue;
+    const step=Math.max(1,Math.floor(c.count/5000));
+    for(let i=0;i<c.count;i+=step){ s+=0.2126*c.getX(i)+0.7152*c.getY(i)+0.0722*c.getZ(i); n++; } }
+  return n?s/n:0.4;
+}
+// Chooses resolution, brightness and surface from what was opened: file type, colour or texture, and size.
+function autoDisplay(){
+  if(!models.length) return;
+  const tris=models.reduce((a,m)=>a+m.tris,0);
+  const coloured=models.some(m=>m.hasScanColor&&m.color==='scan');
+  const textured=models.some(m=>m.texture&&m.color==='scan');
+  const L=models.reduce((a,m)=>a+avgLum(m),0)/models.length;
+  const coarse=matchMedia('(pointer: coarse)').matches;
+  autoRes=tris>4e6?'standard':(tris>1.5e6&&coarse)?'standard':'high';
+  display.res='auto';
+  display.exposure=+Math.min(1.4,Math.max(0.45,0.5/Math.sqrt(Math.max(L,0.02)))).toFixed(2);
+  display.contrast=textured?0.3:coloured?0.4:0.6;
+  display.surface=coloured?'matte':'satin';
+  display.shading='smooth';
+  const fmts=[...new Set(models.map(m=>m.fmt))].join(', ');
+  const triTxt=tris>=1e6?(tris/1e6).toFixed(1)+' million':Math.round(tris/1000)+' thousand';
+  autoNote=`Set for ${fmts} · ${triTxt} triangles · ${textured?'texture photo':coloured?'scan colour':'no colour'}. `+
+    `${RES_LABEL[autoRes]} resolution${autoRes==='standard'?' to keep a large scan smooth to rotate':''}, `+
+    `${display.surface} surface, brightness ${Math.round(display.exposure*100)}% to suit how light the model is.`;
+  applyDisplay();
+}
+
+// holder: centres the case on screen. orient: rotates the case so the bite is upright. models keep their scanner coordinates.
+const holder=new THREE.Group(), orient=new THREE.Group(); holder.add(orient); scene.add(holder);
+let radius=30;
+const models=[]; let nextId=1;
+let jawMode='both', openMM=0, contactsOn=false, isSample=false, userOriented=false;
+
+const COLORS=[['scan','Scan colour'],['#ece3cf','Ivory stone'],['#dcc79a','Buff stone'],['#8fabd2','Blue die stone'],['#e0b4b0','Pink'],['#a9adb0','Grey resin']];
+const DEFAULT_COLOR={upper:'#ece3cf',lower:'#dcc79a',other:'#a9adb0'};
+
+function resize(){
+  const w=stage.clientWidth,h=stage.clientHeight;
+  renderer.setPixelRatio(pixelRatio());
+  renderer.setSize(w,h,false); updateResInfo(); camera.aspect=w/Math.max(h,1); camera.updateProjectionMatrix();
+}
+new ResizeObserver(()=>resize()).observe(stage);
+
+let toastT;
+function toast(msg,ms=4200){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); if(ms) toastT=setTimeout(()=>t.hidden=true,ms); }
+
+// ---------- loading ----------
+function prepGeometry(g){
+  if(g.attributes.normal && !g.index) g.deleteAttribute('normal');
+  if(!g.index && THREE.BufferGeometryUtils){ try{ g=THREE.BufferGeometryUtils.mergeVertices(g,1e-4);}catch(e){} }
+  g.computeVertexNormals();
+  return g;
+}
+function guessJaw(name){
+  const n=name.toLowerCase();
+  if(/upper|maxill|oberkiefer|superior|\bmax\b|[_\- ]u[_\-. ]|^u[_\- ]|_ok\b/.test(n)) return 'upper';
+  if(/lower|mandib|unterkiefer|inferior|\bmand\b|[_\- ]l[_\-. ]|^l[_\- ]|_uk\b/.test(n)) return 'lower';
+  return 'other';
+}
+function toLinearColors(g){
+  const c=g.attributes.color; if(!c) return g;
+  const col=new THREE.Color();
+  for(let i=0;i<c.count;i++){ col.setRGB(c.getX(i),c.getY(i),c.getZ(i)).convertSRGBToLinear(); c.setXYZ(i,col.r,col.g,col.b); }
+  return g;
+}
+const extOf=f=>f.name.split('.').pop().toLowerCase();
+const baseOf=n=>n.replace(/\.[^.]+$/,'').toLowerCase();
+function readFile(file){
+  return new Promise((res,rej)=>{
+    const ext=extOf(file);
+    if(!['stl','ply','obj'].includes(ext)) return rej(new Error(file.name+' is not an STL, PLY or OBJ file.'));
+    const r=new FileReader();
+    r.onerror=()=>rej(new Error(file.name+' couldn’t be read.'));
+    r.onload=()=>{
+      try{
+        let obj;
+        let text='';
+        if(ext==='stl') obj=new THREE.Mesh(prepGeometry(new THREE.STLLoader().parse(r.result)));
+        else if(ext==='ply') obj=new THREE.Mesh(toLinearColors(prepGeometry(new THREE.PLYLoader().parse(r.result))));
+        else{ text=new TextDecoder().decode(r.result); obj=new THREE.OBJLoader().parse(text); obj.traverse(o=>{ if(o.isMesh) o.geometry=toLinearColors(prepGeometry(o.geometry)); }); }
+        const mtllib=(text.match(/^mtllib\s+(.+)$/m)||[])[1];
+        res({obj,name:file.name.replace(/\.[^.]+$/,''),fmt:ext.toUpperCase(),file,mtllib:mtllib&&mtllib.trim()});
+      }catch(e){ rej(new Error(file.name+' couldn’t be opened. It may be damaged.')); }
+    };
+    r.readAsArrayBuffer(file);
+  });
+}
+const IMG=['jpg','jpeg','png'];
+// Finds the texture photo for an OBJ: through its MTL file (map_Kd), by matching name, or the only image chosen.
+async function findTexture(r,extras){
+  const imgs=extras.filter(f=>IMG.includes(extOf(f))); if(!imgs.length) return null;
+  const mtls=extras.filter(f=>extOf(f)==='mtl');
+  const mtl=mtls.find(f=>r.mtllib && f.name.toLowerCase()===r.mtllib.toLowerCase().split(/[\\/]/).pop()) || mtls.find(f=>baseOf(f.name)===baseOf(r.file.name)) || (mtls.length===1?mtls[0]:null);
+  let img=null;
+  if(mtl){
+    const want=((await mtl.text()).match(/^\s*map_Kd\s+(?:-\S+\s+\S+\s+)*(.+)$/mi)||[])[1];
+    if(want) img=imgs.find(f=>f.name.toLowerCase()===want.trim().split(/[\\/]/).pop().toLowerCase());
+  }
+  img=img||imgs.find(f=>baseOf(f.name)===baseOf(r.file.name))||(imgs.length===1?imgs[0]:null);
+  if(!img) return null;
+  const url=URL.createObjectURL(img);
+  return new Promise(res=>new THREE.TextureLoader().load(url,t=>{
+    t.encoding=THREE.sRGBEncoding; t.anisotropy=renderer.capabilities.getMaxAnisotropy(); res(t);
+  },undefined,()=>res(null)));
+}
+async function loadFiles(list){
+  const all=[...list].filter(Boolean); if(!all.length) return;
+  const files=all.filter(f=>['stl','ply','obj'].includes(extOf(f)));
+  const extras=all.filter(f=>['mtl',...IMG].includes(extOf(f)));
+  const odd=all.filter(f=>!files.includes(f)&&!extras.includes(f));
+  if(!files.length){ toast(odd.length?'Open STL, PLY or OBJ scans. '+odd[0].name+' is not a scan file.':'Choose the OBJ scan together with its texture image.'); return; }
+  $('fname').textContent='Opening '+files.length+(files.length>1?' files…':' file…');
+  const results=await Promise.allSettled(files.map(readFile));
+  const ok=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
+  const bad=results.filter(r=>r.status==='rejected').map(r=>r.reason.message);
+  if(odd.length) bad.push(odd.map(f=>f.name).join(', ')+' skipped (not a scan file).');
+  if(bad.length) toast(bad.join(' '));
+  if(!ok.length){ updateSummary(); return; }
+  // A new pair of scans, or a new file when a full case is already open, starts a new case. A single file is added to an incomplete case.
+  if(isSample || ok.length>1 || (jawOf('upper')&&jawOf('lower'))){ clearAll(); isSample=false; }
+  for(const r of ok){
+    const tex=r.fmt==='OBJ'?await findTexture(r,extras):null;
+    addModel(r.obj,r.name,r.fmt+(tex?' + texture':''),guessJaw(r.name),null,tex);
+  }
+  resolveUnknownJaws();
+  afterChange(true);
+  autoDisplay();
+}
+$('file').addEventListener('change',e=>{ loadFiles(e.target.files); e.target.value=''; });
+let dragDepth=0;
+addEventListener('dragenter',e=>{ e.preventDefault(); dragDepth++; $('drop').hidden=false; });
+addEventListener('dragleave',()=>{ if(--dragDepth<=0){ dragDepth=0; $('drop').hidden=true; }});
+addEventListener('dragover',e=>e.preventDefault());
+addEventListener('drop',e=>{ e.preventDefault(); dragDepth=0; $('drop').hidden=true; loadFiles(e.dataTransfer.files); });
+
+// ---------- models ----------
+function addModel(obj,name,fmt,jaw,color,texture){
+  const material=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.62,metalness:0,side:THREE.DoubleSide});
+  const m={id:nextId++,obj,name,fmt,jaw,material,visible:true,opacity:1,meshes:[],tris:0,hasScanColor:!!texture,texture:texture||null};
+  obj.traverse(o=>{ if(o.isMesh){
+    o.material=material; m.meshes.push(o);
+    const g=o.geometry; if(g.attributes.color){ m.hasScanColor=true; o.userData.scanColor=g.attributes.color; }
+    m.tris+=(g.index?g.index.count:g.attributes.position.count)/3; }});
+  m.color=color||(m.hasScanColor?'scan':DEFAULT_COLOR[jaw]);
+  m.basePos=obj.position.clone();
+  orient.add(obj); models.push(m);
+  return m;
+}
+function removeModel(m){
+  orient.remove(m.obj); m.obj.traverse(o=>o.geometry&&o.geometry.dispose()); m.material.dispose(); if(m.texture) m.texture.dispose();
+  models.splice(models.indexOf(m),1);
+}
+function clearAll(){ [...models].forEach(removeModel); userOriented=false; orient.quaternion.identity(); setOpen(0); }
+function resolveUnknownJaws(){
+  const unk=models.filter(m=>m.jaw==='other');
+  const has=j=>models.some(m=>m.jaw===j);
+  if(unk.length===1 && has('upper')!==has('lower')){ unk[0].jaw=has('upper')?'lower':'upper'; if(!unk[0].hasScanColor) unk[0].color=DEFAULT_COLOR[unk[0].jaw]; }
+}
+const jawOf=j=>models.find(m=>m.jaw===j);
+
+function applyAppearance(m){
+  const inContacts=contactsOn && (m.jaw==='upper'||m.jaw==='lower');
+  for(const mesh of m.meshes){
+    const g=mesh.geometry;
+    if(inContacts && mesh.userData.contactColor){ g.setAttribute('color',mesh.userData.contactColor); }
+    else if(m.color==='scan' && mesh.userData.scanColor){ g.setAttribute('color',mesh.userData.scanColor); }
+  }
+  const contactVC=inContacts && m.meshes.some(x=>x.userData.contactColor);
+  const useTex=!contactVC && m.color==='scan' && !!m.texture;
+  const useVC=contactVC || (m.color==='scan' && m.meshes.some(x=>x.userData.scanColor) && !useTex);
+  m.material.vertexColors=useVC;
+  m.material.map=useTex?m.texture:null;
+  m.material.color.copy((useVC||useTex)?new THREE.Color(1,1,1):lin(m.color==='scan'?DEFAULT_COLOR[m.jaw]:m.color));
+  m.material.roughness=SURFACE[display.surface];
+  m.material.flatShading=display.shading==='flat';
+  m.material.opacity=m.opacity; m.material.transparent=m.opacity<1; m.material.depthWrite=m.opacity>=1;
+  m.material.wireframe=wire;
+  m.material.needsUpdate=true;
+}
+function shown(m){ return m.visible && (jawMode==='both' || m.jaw===jawMode); }
+function applyVisibility(){ models.forEach(m=>m.obj.visible=shown(m)); }
+
+// ---------- orientation & centring ----------
+function localUp(){ return Y.clone().applyQuaternion(orient.quaternion.clone().invert()); }
+function setOpen(mm){
+  openMM=mm; $('open').value=mm; $('openv').textContent=mm.toFixed(1)+' mm';
+  const up=localUp();
+  models.forEach(m=>{ m.obj.position.copy(m.basePos); if(m.jaw==='upper') m.obj.position.addScaledVector(up,mm); });
+}
+function samplePoints(m,max=40000){
+  const pts=[]; orient.updateMatrixWorld(true);
+  const inv=new THREE.Matrix4().copy(orient.matrixWorld).invert();
+  for(const mesh of m.meshes){
+    const p=mesh.geometry.attributes.position, step=Math.max(1,Math.floor(p.count/max));
+    const rel=new THREE.Matrix4().multiplyMatrices(inv,mesh.matrixWorld); // mesh in the case's own (scanner) coordinates
+    for(let i=0;i<p.count;i+=step) pts.push(new THREE.Vector3(p.getX(i),p.getY(i),p.getZ(i)).applyMatrix4(rel));
+  }
+  return pts;
+}
+// When both jaws are loaded: point the bite upward, put the arch width left-right, incisors facing you.
+function autoOrient(){
+  const up=jawOf('upper'), lo=jawOf('lower'); if(!up||!lo) return false;
+  const saved=openMM; models.forEach(m=>m.obj.position.copy(m.basePos));
+  const cen=pts=>pts.reduce((a,p)=>a.add(p),new THREE.Vector3()).multiplyScalar(1/pts.length);
+  const pu=samplePoints(up), pl=samplePoints(lo);
+  const dir=cen(pu).sub(cen(pl)); if(dir.lengthSq()<1e-9) return false;
+  const q1=new THREE.Quaternion().setFromUnitVectors(dir.normalize(),Y);
+  const P=pl.map(p=>p.clone().applyQuaternion(q1));
+  const c=cen(P); let sxx=0,szz=0,sxz=0;
+  P.forEach(p=>{ const x=p.x-c.x,z=p.z-c.z; sxx+=x*x; szz+=z*z; sxz+=x*z; });
+  const th=0.5*Math.atan2(2*sxz,sxx-szz);
+  const qy=new THREE.Quaternion().setFromAxisAngle(Y,th);
+  const R=P.map(p=>p.clone().applyQuaternion(qy));
+  let minx=Infinity,maxx=-Infinity,minz=Infinity,maxz=-Infinity;
+  R.forEach(p=>{ minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);minz=Math.min(minz,p.z);maxz=Math.max(maxz,p.z); });
+  const midx=(minx+maxx)/2, midz=(minz+maxz)/2, strip=(maxx-minx)*0.06;
+  let sz=0,n=0; R.forEach(p=>{ if(Math.abs(p.x-midx)<strip){ sz+=p.z; n++; } });
+  let q=qy.multiply(q1);
+  if(n && sz/n<midz) q=new THREE.Quaternion().setFromAxisAngle(Y,Math.PI).multiply(q); // incisors are on the side where the arch crosses the midline
+  orient.quaternion.copy(q);
+  setOpen(saved);
+  return true;
+}
+function recenter(){
+  holder.position.set(0,0,0); holder.updateMatrixWorld(true);
+  const box=new THREE.Box3(); models.forEach(m=>box.expandByObject(m.obj));
+  if(box.isEmpty()) return;
+  holder.position.copy(box.getCenter(new THREE.Vector3())).negate();
+  radius=Math.max(box.getBoundingSphere(new THREE.Sphere()).radius,1e-3);
+  camera.near=radius/200; camera.far=radius*40; camera.updateProjectionMatrix();
+  controls.minDistance=radius*0.15; controls.maxDistance=radius*12;
+}
+function rotateCase(axis,angle){
+  userOriented=true;
+  orient.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(axis,angle));
+  setOpen(openMM); clearMeasures(); recenter(); refreshContacts(); setView('front');
+}
+$('tilt').addEventListener('click',()=>rotateCase(new THREE.Vector3(1,0,0),-Math.PI/2));
+$('spin').addEventListener('click',()=>rotateCase(Y,Math.PI/2));
+$('flip').addEventListener('click',()=>rotateCase(new THREE.Vector3(0,0,1),Math.PI));
+
+function afterChange(newCase){
+  if(newCase && !userOriented) autoOrient();
+  setOpen(openMM);
+  models.forEach(applyAppearance); applyVisibility();
+  recenter(); clearMeasures(); renderModels(); updateSummary();
+  if(contactsOn) refreshContacts();
+  if(newCase) setView('front',true);
+}
+function updateSummary(){
+  const u=models.filter(m=>m.jaw==='upper').length, l=models.filter(m=>m.jaw==='lower').length;
+  const parts=[]; if(u) parts.push('Upper'); if(l) parts.push('Lower');
+  const other=models.length-u-l; if(other) parts.push(other+' other');
+  $('fname').textContent=isSample?'Example case (generated, not a real scan)':models.length?models.length+(models.length>1?' scans · ':' scan · ')+parts.join(' + '):'No scans open';
+  $('mcount').textContent=models.length?models.length+'':'';
+}
+
+// ---------- model panel ----------
+const eyeSvg=on=>on?'<svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>'
+                  :'<svg class="i" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 4.4-1"/></svg>';
+function renderModels(){
+  const ul=$('models'); ul.innerHTML='';
+  if(!models.length){ ul.innerHTML='<li class="empty">Open the upper and lower scans of a case together.</li>'; return; }
+  for(const m of models){
+    const li=document.createElement('li'); li.className='model'+(shown(m)?'':' off');
+    const colorOpts=COLORS.filter(([v])=>v!=='scan'||m.hasScanColor).map(([v,t])=>`<option value="${v}"${v===m.color?' selected':''}>${t}</option>`).join('');
+    li.innerHTML=`
+      <button class="icon-btn eye" aria-pressed="${m.visible}" title="${m.visible?'Hide':'Show'} ${esc(m.name)}">${eyeSvg(m.visible)}</button>
+      <div class="nm"><b title="${esc(m.name)}">${esc(m.name)}</b><small>${m.fmt} · ${Math.round(m.tris).toLocaleString()} triangles</small></div>
+      <button class="icon-btn rm" title="Close ${esc(m.name)}"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <div class="ctl">
+        <select class="jaw" id="jaw-${m.id}" aria-label="Jaw"><option value="upper"${m.jaw==='upper'?' selected':''}>Upper</option><option value="lower"${m.jaw==='lower'?' selected':''}>Lower</option><option value="other"${m.jaw==='other'?' selected':''}>Other</option></select>
+        <select class="col" id="col-${m.id}" aria-label="Colour">${colorOpts}</select>
+        <input class="op" id="op-${m.id}" type="range" min="0.15" max="1" step="0.05" value="${m.opacity}" aria-label="Opacity of ${esc(m.name)}" title="Opacity">
+      </div>`;
+    li.querySelector('.eye').onclick=()=>{ m.visible=!m.visible; applyVisibility(); renderModels(); };
+    li.querySelector('.rm').onclick=()=>{ removeModel(m); afterChange(false); };
+    li.querySelector('.jaw').onchange=e=>{ m.jaw=e.target.value; if(m.color!=='scan') m.color=DEFAULT_COLOR[m.jaw]; if(!userOriented) autoOrient(); afterChange(false); };
+    li.querySelector('.col').onchange=e=>{ m.color=e.target.value; applyAppearance(m); if(contactsOn) refreshContacts(); };
+    li.querySelector('.op').oninput=e=>{ m.opacity=+e.target.value; applyAppearance(m); };
+    ul.appendChild(li);
+  }
+}
+function esc(s){ return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ---------- toolbar ----------
+let wire=false;
+$('wire').addEventListener('click',e=>{ wire=!wire; e.currentTarget.setAttribute('aria-pressed',wire); models.forEach(applyAppearance); });
+function setJawMode(j){
+  jawMode=j; document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.j===j));
+  applyVisibility(); renderModels();
+}
+document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>{ viewJaw=false; setJawMode(b.dataset.j); }));
+$('open').addEventListener('input',e=>{ setOpen(+e.target.value); clearMeasures(); });
+$('open').addEventListener('change',()=>{ if(contactsOn) refreshContacts(); });
+
+// ---------- occlusal contacts ----------
+const BANDS=[[0,0xd7263d],[0.1,0xf08a24],[0.25,0xefd03a],[0.5,0x45a85a],[1.0,0x3b7dd8]].map(([d,c])=>[d,lin(c)]);
+const MAXD=1.0;
+function worldVerts(ms){
+  holder.updateMatrixWorld(true);
+  const list=[];
+  for(const m of ms) for(const mesh of m.meshes){
+    const p=mesh.geometry.attributes.position, nrm=mesh.geometry.attributes.normal;
+    const mw=mesh.matrixWorld, nm=new THREE.Matrix3().getNormalMatrix(mw);
+    const pos=new Float32Array(p.count*3), nor=new Float32Array(p.count*3), v=new THREE.Vector3();
+    for(let i=0;i<p.count;i++){
+      v.fromBufferAttribute(p,i).applyMatrix4(mw); pos[i*3]=v.x; pos[i*3+1]=v.y; pos[i*3+2]=v.z;
+      v.fromBufferAttribute(nrm,i).applyMatrix3(nm).normalize(); nor[i*3]=v.x; nor[i*3+1]=v.y; nor[i*3+2]=v.z;
+    }
+    list.push({m,mesh,pos,nor});
+  }
+  return list;
+}
+const cellKey=(x,y,z)=>((x*73856093)^(y*19349663)^(z*83492791))|0;
+function buildGrid(parts){
+  const g=new Map();
+  for(const part of parts){ const P=part.pos;
+    for(let i=0;i<P.length;i+=3){
+      const k=cellKey(Math.floor(P[i]/MAXD),Math.floor(P[i+1]/MAXD),Math.floor(P[i+2]/MAXD));
+      let a=g.get(k); if(!a){ a=[]; g.set(k,a); } a.push(P[i],P[i+1],P[i+2]);
+    }}
+  return g;
+}
+function paint(parts,grid){
+  const base=new THREE.Color();
+  for(const {m,mesh,pos,nor} of parts){
+    const n=pos.length/3, col=new Float32Array(n*3), sc=mesh.userData.scanColor;
+    if(!(m.color==='scan'&&sc)) base.copy(lin(m.color==='scan'?DEFAULT_COLOR[m.jaw]:m.color));
+    for(let i=0;i<n;i++){
+      const x=pos[i*3],y=pos[i*3+1],z=pos[i*3+2];
+      const cx=Math.floor(x/MAXD),cy=Math.floor(y/MAXD),cz=Math.floor(z/MAXD);
+      let best=MAXD*MAXD, bx=0,by=0,bz=0, found=false;
+      for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)for(let c=-1;c<=1;c++){
+        const arr=grid.get(cellKey(cx+a,cy+b,cz+c)); if(!arr) continue;
+        for(let j=0;j<arr.length;j+=3){ const dx=arr[j]-x,dy=arr[j+1]-y,dz=arr[j+2]-z, d=dx*dx+dy*dy+dz*dz;
+          if(d<best){ best=d; bx=dx;by=dy;bz=dz; found=true; } }
+      }
+      let out;
+      if(found){
+        const d=Math.sqrt(best), sign=(bx*nor[i*3]+by*nor[i*3+1]+bz*nor[i*3+2])<0?-1:1;
+        const sd=d*sign;
+        out=sd<=0?BANDS[0][1]:sd<0.1?BANDS[1][1]:sd<0.25?BANDS[2][1]:sd<0.5?BANDS[3][1]:BANDS[4][1];
+      }
+      if(out){ col[i*3]=out.r; col[i*3+1]=out.g; col[i*3+2]=out.b; }
+      else if(m.color==='scan'&&sc){ col[i*3]=sc.getX(i); col[i*3+1]=sc.getY(i); col[i*3+2]=sc.getZ(i); }
+      else { col[i*3]=base.r; col[i*3+1]=base.g; col[i*3+2]=base.b; }
+    }
+    mesh.userData.contactColor=new THREE.BufferAttribute(col,3);
+  }
+}
+function computeContacts(){
+  const ups=models.filter(m=>m.jaw==='upper'), los=models.filter(m=>m.jaw==='lower');
+  if(!ups.length||!los.length) return false;
+  const U=worldVerts(ups), L=worldVerts(los);
+  paint(U,buildGrid(L)); paint(L,buildGrid(U));
+  return true;
+}
+let contactJob=0;
+function refreshContacts(){
+  if(!contactsOn){ models.forEach(applyAppearance); return; }
+  const job=++contactJob;
+  toast('Calculating contacts…',0);
+  setTimeout(()=>{
+    if(job!==contactJob) return;
+    const ok=computeContacts();
+    $('toast').hidden=true;
+    if(!ok){ setContacts(false); toast('Contacts need one scan set as Upper and one as Lower. Set the jaw for each scan in the Models panel.'); return; }
+    models.forEach(applyAppearance);
+    if(openMM>1) toast('The bite is open, so no teeth are within 1 mm. Set Open bite to 0 to see contacts.');
+  },30);
+}
+function setContacts(on){
+  contactsOn=on; $('contacts').setAttribute('aria-pressed',on); $('legend').hidden=!on;
+  if(on) $('panel').open=true;
+  if(!on) models.forEach(applyAppearance);
+}
+$('contacts').addEventListener('click',()=>{ setContacts(!contactsOn); if(contactsOn) refreshContacts(); });
+
+// ---------- views ----------
+const VIEWS={front:[0,0.05,1],right:[-1,0.05,0],left:[1,0.05,0],back:[0,0.05,-1],upperOcc:[0,-1,0.0015],lowerOcc:[0,1,0.0015]};
+let tween=null;
+let viewJaw=false; // true while an occlusal view has hidden the opposing jaw
+function setView(v,instant){
+  if(v==='upperOcc'||v==='lowerOcc'){ setJawMode(v==='upperOcc'?'upper':'lower'); viewJaw=true; }
+  else if(viewJaw){ setJawMode('both'); viewJaw=false; }
+  const dir=new THREE.Vector3(...VIEWS[v]).normalize();
+  const dist=radius/Math.sin(THREE.MathUtils.degToRad(camera.fov/2))*1.08;
+  const to=dir.multiplyScalar(dist);
+  if(instant||reduceMotion){ camera.position.copy(to); controls.target.set(0,0,0); controls.update(); return; }
+  tween={from:camera.position.clone(),tFrom:controls.target.clone(),to,start:performance.now()};
+}
+document.querySelectorAll('.views button').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.v)));
+
+// ---------- measuring ----------
+let measuring=false, pending=null; const measures=[];
+const mMat=new THREE.MeshBasicMaterial({color:0xd2552c,depthTest:false});
+const lMat=new THREE.LineBasicMaterial({color:0xd2552c,depthTest:false});
+$('measure').addEventListener('click',e=>{
+  measuring=!measuring; e.currentTarget.setAttribute('aria-pressed',measuring);
+  if(!measuring && pending){ scene.remove(pending.dot); pending=null; }
+  renderList();
+});
+$('clear').addEventListener('click',clearMeasures);
+function dot(p){ const m=new THREE.Mesh(new THREE.SphereGeometry(radius*0.012,12,8),mMat); m.position.copy(p); m.renderOrder=10; scene.add(m); return m; }
+function clearMeasures(){
+  measures.forEach(m=>{ m.objs.forEach(o=>scene.remove(o)); m.tag.remove(); });
+  measures.length=0; if(pending){ scene.remove(pending.dot); pending=null; }
+  renderList();
+}
+function renderList(){
+  $('mlist').innerHTML=measures.map(m=>`<li>${m.d.toFixed(2)} mm</li>`).join('');
+  $('mhelp').hidden=measures.length>0 && !pending;
+  $('mhelp').textContent=pending?'Now tap the second point.':'Tap two points on the model.';
+  $('measures').hidden=!measuring && measures.length===0;
+}
+const isShown=o=>{ while(o){ if(!o.visible) return false; o=o.parent; } return true; };
+const ray=new THREE.Raycaster(), ndc=new THREE.Vector2();
+let down=null, activePointers=0;
+renderer.domElement.addEventListener('pointerdown',e=>{ activePointers++; down=activePointers===1?{x:e.clientX,y:e.clientY,t:performance.now()}:null; });
+renderer.domElement.addEventListener('pointerup',e=>{
+  activePointers=Math.max(0,activePointers-1);
+  if(!measuring||!down) return;
+  const moved=Math.hypot(e.clientX-down.x,e.clientY-down.y), quick=performance.now()-down.t<500; down=null;
+  if(moved>6||!quick) return;
+  const r=renderer.domElement.getBoundingClientRect();
+  ndc.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);
+  ray.setFromCamera(ndc,camera);
+  const hit=ray.intersectObject(orient,true).find(h=>isShown(h.object)); if(!hit) return;
+  if(!pending){ pending={p:hit.point.clone(),dot:dot(hit.point)}; }
+  else{
+    const b=dot(hit.point);
+    const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([pending.p,hit.point]),lMat); line.renderOrder=9; scene.add(line);
+    const tag=document.createElement('div'); tag.className='tag'; const d=pending.p.distanceTo(hit.point); tag.textContent=d.toFixed(2)+' mm'; stage.appendChild(tag);
+    measures.push({a:pending.p,b:hit.point.clone(),d,objs:[pending.dot,b,line],tag});
+    pending=null;
+  }
+  renderList();
+});
+renderer.domElement.addEventListener('pointercancel',()=>{ activePointers=Math.max(0,activePointers-1); down=null; });
+
+// ---------- example case: generated upper and lower arches in occlusion ----------
+function makeArch(halfPts,teeth){
+  const ivory=lin(0xe8dcc4), gum=lin(0xc97f7d);
+  const half=halfPts.map(p=>new THREE.Vector3(p[0],0,p[1]));
+  const curve=new THREE.CatmullRomCurve3(half), L=curve.getLength();
+  const parts=[];
+  const colorize=(g,col)=>{ const n=g.attributes.position.count,a=new Float32Array(n*3); for(let i=0;i<n;i++){a[i*3]=col.r;a[i*3+1]=col.g;a[i*3+2]=col.b;} g.setAttribute('color',new THREE.BufferAttribute(a,3)); return g; };
+  const DIMS={I:[0,5.2,2.8],i:[0,4.6,2.6],c:[0,5.4,3.6],p:[0,4.1,3.9],m:[0,3.7,5.0]};
+  for(const side of [1,-1]){
+    let s=0.3;
+    for(const [w,type] of teeth){
+      const u=Math.min((s+w/2)/L,1); s+=w+0.15;
+      const p=curve.getPointAt(u), t=curve.getTangentAt(u);
+      const g=new THREE.SphereGeometry(1,40,28), d=[w/2,DIMS[type][1],DIMS[type][2]];
+      const pos=g.attributes.position;
+      for(let i=0;i<pos.count;i++){
+        let x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
+        if(type==='c'&&y>0){ x*=1-0.45*y; z*=1-0.25*y; }
+        if((type==='i'||type==='I')&&y>0) z*=1-0.55*y;
+        x*=d[0]; y*=d[1]; z*=d[2];
+        if((type==='m'||type==='p')&&y>d[1]*0.55) y+=0.55*Math.cos(x*(type==='m'?1.25:1.7))*Math.cos(z*1.3)-0.25;
+        pos.setXYZ(i,x,y,z);
+      }
+      const q=new THREE.Quaternion().setFromAxisAngle(Y,Math.atan2(-t.z,t.x*side));
+      g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(p.x*side,4.3,p.z),q,new THREE.Vector3(1,1,1)));
+      g.computeVertexNormals(); parts.push(colorize(g,ivory));
+    }
+  }
+  const full=[...half.slice(1).reverse().map(v=>new THREE.Vector3(-v.x,v.y,v.z)),...half];
+  const tube=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(full),160,6,28,false);
+  tube.scale(1,0.85,1); tube.translate(0,1.2,0); tube.computeVertexNormals();
+  parts.push(colorize(tube,gum));
+  return THREE.BufferGeometryUtils.mergeBufferGeometries(parts);
+}
+function makeExampleCase(){
+  const lower=makeArch([[0,21],[8,18.5],[14.5,13],[18.5,5],[21,-6],[22.6,-18],[23.5,-27]],
+    [[5.0,'i'],[5.5,'i'],[7.0,'c'],[7.0,'p'],[7.0,'p'],[11.0,'m'],[10.5,'m']]);
+  const upper=makeArch([[0,25.5],[8.8,22.5],[16,16],[20.6,7],[23.2,-4.5],[24.8,-16.5],[25.6,-27]],
+    [[8.5,'I'],[6.5,'i'],[7.5,'c'],[7.0,'p'],[6.5,'p'],[10.0,'m'],[9.0,'m']]);
+  upper.scale(1,-1,1);
+  const idx=upper.index.array; for(let i=0;i<idx.length;i+=3){ const t=idx[i+1]; idx[i+1]=idx[i+2]; idx[i+2]=t; }
+  upper.translate(0,16.7,0); upper.computeVertexNormals();
+  [upper,lower].forEach(g=>g.computeVertexNormals());
+  addModel(new THREE.Mesh(upper),'Example upper arch','Generated','upper','scan');
+  addModel(new THREE.Mesh(lower),'Example lower arch','Generated','lower','scan');
+  isSample=true;
+  afterChange(true);
+}
+makeExampleCase();
+if(stage.clientWidth<720) $('panel').open=false;
+
+// ---------- display panel ----------
+$('display').addEventListener('click',e=>{ const p=$('dpanel'); p.hidden=!p.hidden; e.currentTarget.setAttribute('aria-pressed',!p.hidden); });
+$('dauto').addEventListener('click',autoDisplay);
+document.querySelectorAll('#res button').forEach(b=>b.addEventListener('click',()=>{ display.res=b.dataset.r; applyDisplay(); }));
+document.querySelectorAll('#surface button').forEach(b=>b.addEventListener('click',()=>{ display.surface=b.dataset.s; applyDisplay(); }));
+document.querySelectorAll('#shading button').forEach(b=>b.addEventListener('click',()=>{ display.shading=b.dataset.h; applyDisplay(); }));
+$('bright').addEventListener('input',e=>{ display.exposure=+e.target.value; applyLights(); });
+$('contrast').addEventListener('input',e=>{ display.contrast=+e.target.value; applyLights(); });
+autoDisplay();
+
+// ---------- loop ----------
+const tmp=new THREE.Vector3();
+function frame(now){
+  if(tween){
+    const k=Math.min((now-tween.start)/380,1), e=1-Math.pow(1-k,3);
+    camera.position.lerpVectors(tween.from,tween.to,e);
+    controls.target.lerpVectors(tween.tFrom,new THREE.Vector3(),e);
+    if(k>=1) tween=null;
+  }
+  controls.update();
+  renderer.render(scene,camera);
+  const w=stage.clientWidth,h=stage.clientHeight;
+  for(const m of measures){
+    tmp.copy(m.a).add(m.b).multiplyScalar(0.5).project(camera);
+    m.tag.hidden=tmp.z>1;
+    m.tag.style.left=((tmp.x+1)/2*w)+'px'; m.tag.style.top=((1-tmp.y)/2*h)+'px';
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------- app: install, offline, open-with ----------
+let deferredPrompt=null;
+addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); deferredPrompt=e; $('install').hidden=false; });
+$('install').addEventListener('click',async()=>{ if(!deferredPrompt) return; deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; $('install').hidden=true; });
+addEventListener('appinstalled',()=>{ $('install').hidden=true; toast('Installed. Open Dental Scan Viewer from your apps or home screen.'); });
+if('serviceWorker' in navigator && location.protocol.startsWith('http') && !location.hostname.endsWith('claude.ai') && !location.hostname.includes('claudeusercontent')) navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('launchQueue' in window) launchQueue.setConsumer(p=>{ if(p.files&&p.files.length) Promise.all(p.files.map(f=>f.getFile())).then(loadFiles); });
+</script>
+</body>
+</html>
